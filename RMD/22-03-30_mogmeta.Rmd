@@ -1,0 +1,459 @@
+---
+title: "MOG RTX meta analysis"
+author: "Bo Sun"
+date: "2022-03-30"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r, warning=FALSE, message=FALSE}
+library(meta)
+library(metafor)
+library(ggrepel)
+library(dmetar)
+library(smd)
+library(tidyverse)
+library(PerformanceAnalytics)
+library(ggplot2); theme_set(theme_bw(base_size = 15)+
+                                    theme(axis.text.x = element_text(angle = 45, hjust=1), 
+                                          strip.text = element_text(colour = 'black', face="bold",size=12), 
+                                          panel.grid.major = element_blank(), 
+                                          panel.grid.minor = element_blank(),
+                                          panel.border = element_rect(size = 0.7),
+                                          axis.ticks.length=unit(.10, "cm"),
+                                          axis.ticks = element_line(size=0.7),
+                                          strip.background = element_blank()))
+```
+
+##Loading data and prepping tables
+It is worth noting that using MD results in higher heterogeneity values than using SMD. Here I use MD as we have discussed. The significance does not change, but it affects the multi-model inference later. Using SMD, there is no significant influence... using MD there is. 
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+### load data
+curdir = "/Users/bosun/Documents/DPhil/OANG/6\ -\ Collaborations/2021-12-27_Val_meta/"
+mog <- read.csv("/Users/bosun/Documents/DPhil/OANG/6\ -\ Collaborations/2021-12-27_Val_meta/data/2022-03-27-MOG_ARR_ALL.csv")
+mogedss <- read.csv("/Users/bosun/Documents/DPhil/OANG/6\ -\ Collaborations/2021-12-27_Val_meta/data/2022-03-27-MOGEDSS.csv")
+mogedss <- mogedss[complete.cases(mogedss), ]
+
+##remove Shu paper 
+mog <- mog[!grepl("Shu", mog$STUDY),]
+mogedss <- mogedss[!grepl("Shu", mogedss$STUDY),]
+
+#mog <- mog[-11,]
+mogmeta <- escalc(measure="MD", m1i=mog$mean_ARR_postRTX, m2i=mog$mean_ARR_preRTX, 
+       sd1i=mog$SD.2, sd2i=mog$SD.1, n1i=mog$n, n2i=mog$n, data=mog)
+mogmeta$sei<-sqrt(mogmeta$vi)
+mogmeta$Group <- "MOG"
+
+mogedssmeta <- escalc(measure="MD", m1i=mogedss$mean_EDSS_postRTX, m2i=mogedss$mean_EDSS_preRTX, 
+       sd1i=mogedss$SD.2, sd2i=mogedss$SD.1, n1i=mogedss$n, n2i=mogedss$n, data=mogedss)
+mogedssmeta$sei<-sqrt(mogedssmeta$vi)
+mogedssmeta$Group <- "MOG"
+
+##load nmosd data and merge with mog
+nmosd <- read.csv("/Users/bosun/Documents/DPhil/OANG/6\ -\ Collaborations/2021-12-27_Val_meta/data/2022-03-27-NMO_ARR_ALL.csv")
+nmosdedss <- read.csv("/Users/bosun/Documents/DPhil/OANG/6\ -\ Collaborations/2021-12-27_Val_meta/data/2022-03-27-NMO_EDSS_ALL.csv")
+
+nmosdmeta <- escalc(measure="MD", m1i=nmosd$mean_ARR_postRTX, m2i=nmosd$mean_ARR_preRTX, 
+                  sd1i=nmosd$SD.2, sd2i=nmosd$SD.1, n1i=nmosd$n, n2i=nmosd$n, data=nmosd)
+nmosdmeta$sei<-sqrt(nmosdmeta$vi)
+nmosdmeta$Group <- "NMOSD"
+
+write.csv(nmosdmeta, "/Users/bosun/Documents/DPhil/OANG/6\ -\ Collaborations/2021-12-27_Val_meta/data/nmosdmeta.csv")
+
+nmosdedssmeta <- escalc(measure="MD", m1i=nmosdedss$mean_EDSS_postRTX, m2i=nmosdedss$mean_EDSS_preRTX, 
+       sd1i=nmosdedss$SD.2, sd2i=nmosdedss$SD.1, n1i=nmosdedss$n, n2i=nmosdedss$n, data=nmosdedss)
+nmosdedssmeta$sei<-sqrt(nmosdedssmeta$vi)
+nmosdedssmeta$Group <- "NMOSD"
+
+mergemeta <- rbind(mogmeta, nmosdmeta)
+mergeedssmeta <- rbind(mogedssmeta, nmosdedssmeta)
+
+write.csv(mergemeta, "data/mergemeta.csv")
+write.csv(mergemeta, "data/mergeedssmeta.csv")
+
+mergemeta <- read.csv("data/mergemeta.csv")
+mergemeta <- read.csv("data/mergeedssmeta.csv")
+
+mogmetagen <- metagen(TE = yi,
+        seTE = sei,
+        studlab = STUDY,
+        data = mogmeta,
+        sm = "MD",
+        fixed = FALSE,
+        random = TRUE,
+        method.tau = "REML",
+        hakn = FALSE,
+        title = "Mogmeta")
+
+nmosdmetagen <- metagen(TE = yi,
+        seTE = sei,
+        studlab = STUDY,
+        data = nmosdmeta,
+        sm = "MD",
+        fixed = FALSE,
+        random = TRUE,
+        method.tau = "REML",
+        hakn = FALSE,
+        title = "NMOSDmeta")
+
+mogedssmetagen <- metagen(TE = yi,
+        seTE = sei,
+        studlab = STUDY,
+        data = mogedssmeta,
+        sm = "MD",
+        fixed = FALSE,
+        random = TRUE,
+        method.tau = "REML",
+        hakn = FALSE,
+        title = "MogEDSSmeta")
+
+nmosdedssmetagen <- metagen(TE = yi,
+        seTE = sei,
+        studlab = STUDY,
+        data = nmosdedssmeta,
+        sm = "MD",
+        fixed = FALSE,
+        random = TRUE,
+        method.tau = "REML",
+        hakn = FALSE,
+        title = "NMOSDEDSSmeta")
+
+mergemetagen <- metagen(TE = yi,
+                      seTE = sei,
+                      studlab = STUDY,
+                      data = mergemeta[!is.na(mergemeta$yi),],
+                      sm = "MD",
+                      fixed = FALSE,
+                      random = TRUE,
+                      method.tau = "REML",
+                      hakn = FALSE,
+                      title = "mergemeta")
+
+mergeedssmetagen <- metagen(TE = yi,
+                      seTE = sei,
+                      studlab = STUDY,
+                      data = mergeedssmeta[!is.na(mergeedssmeta$yi),],
+                      sm = "MD",
+                      fixed = FALSE,
+                      random = TRUE,
+                      method.tau = "REML",
+                      hakn = FALSE,
+                      title = "mergeEDSSmeta")
+```
+
+## Assessing bias
+Here we see that MOG papers are biased. We will have to state this as a limitation
+```{r}
+# Generate funnel plot (we do not include study labels here)
+funnel.meta(mogmetagen)
+title("MOG ARR")
+
+
+# Plot over points
+
+eggers.test(mogmetagen)
+
+```
+
+NMOSD papers are much more even. 
+```{r}
+# Generate funnel plot (we do not include study labels here)
+funnel.meta(nmosdmetagen)
+title("NMOSD ARR")
+
+
+# Plot over points
+
+eggers.test(nmosdmetagen)
+
+```
+
+MOG EDSS scores are not biased across studies. 
+```{r}
+# Generate funnel plot (we do not include study labels here)
+funnel.meta(mogedssmetagen)
+title("MOG EDSS")
+
+
+# Plot over points
+
+eggers.test(mogedssmetagen)
+```
+
+
+NMOSD EDSS scores are also not biased. 
+```{r}
+# Generate funnel plot (we do not include study labels here)
+funnel.meta(nmosdedssmetagen)
+title("NMOSD EDSS")
+
+
+# Plot over points
+
+eggers.test(nmosdedssmetagen)
+```
+
+## Forest plot MOG ARR
+
+Here a random effects model reveals significant difference in mean ARR with lower ARRs post RTX.
+```{r,fig.height=7, fig.width=10, warning=FALSE, message=FALSE}
+##plot mog ARR forest plot
+forest.meta(mogmetagen, 
+            sortvar = yi,
+            predict = TRUE, 
+            print.tau2 = FALSE,
+            leftlabs = c("Study", "g", "SE"))
+
+print(mogmetagen)
+```
+
+## Forest plot NMOSD ARR
+As shown before in Damata et al., NMOSD post RTX ARRs are significantly lower. 
+```{r,fig.height=7, fig.width=10, warning=FALSE, message=FALSE}
+##plot mog ARR forest plot
+forest.meta(nmosdmetagen, 
+            sortvar = yi,
+            predict = TRUE, 
+            print.tau2 = FALSE,
+            leftlabs = c("Study", "g", "SE"))
+
+print(nmosdmetagen)
+```
+
+## Merged ARR analysis
+The merge analysis reveals that NMOSD patients benefit more than MOG patients. Between groups Q=9.09 p=0.003. 
+
+```{r,fig.height=16, fig.width=11, warning=FALSE, message=FALSE}
+##plot mog and nmosd together
+mergemetagen <- update.meta(mergemetagen, 
+            subgroup = Group, 
+            tau.common = FALSE)
+forest.meta(mergemetagen, 
+            sortvar = yi,
+            predict = TRUE, 
+            print.tau2 = FALSE,
+            subgroup = TRUE,
+            leftlabs = c("Study", "MD", "SE"))
+print(mergemetagen)
+
+```
+
+## Forest plot MOG EDSS
+EDSS appeared to be significantly better in those post RTX. 
+```{r,fig.height=7, fig.width=10, warning=FALSE, message=FALSE}
+##plot MOG EDSS
+forest.meta(mogedssmetagen, 
+            sortvar = yi,
+            predict = TRUE, 
+            print.tau2 = FALSE,
+            leftlabs = c("Study", "g", "SE"))
+print(mogedssmetagen)
+
+```
+
+## Forest plot NMOSD EDSS
+
+EDSS is significantly improved post RTX in NMOSD patients.
+```{r,fig.height=7, fig.width=10, warning=FALSE, message=FALSE}
+##plot MOG EDSS
+forest.meta(nmosdedssmetagen, 
+            sortvar = yi,
+            predict = TRUE, 
+            print.tau2 = FALSE,
+            leftlabs = c("Study", "g", "SE"))
+print(nmosdedssmetagen)
+
+```
+
+## Combined analysis of EDSS
+
+Here we see that there is no difference between EDSS scores of patients pre and post RTX between MOG and NMOSD (p=0.4254)
+```{r,fig.height=16, fig.width=11, warning=FALSE, message=FALSE}
+##plot mog and nmosd together
+mergeedssmetagen <- update.meta(mergeedssmetagen, 
+            subgroup = Group, 
+            tau.common = FALSE)
+forest.meta(mergeedssmetagen, 
+            sortvar = yi,
+            predict = TRUE, 
+            print.tau2 = FALSE,
+            subgroup = TRUE,
+            leftlabs = c("Study", "MD", "SE"))
+print(mergeedssmetagen)
+
+```
+
+
+## Multiple regression - Univariate models
+Here we removed mean baseline EDSS and prop children. As they significantly correlate with other predictors. 
+```{r, warning=FALSE, message=FALSE}
+##meta-regression
+mogreg<- read.csv("/Users/bosun/Documents/DPhil/OANG/6\ -\ Collaborations/2021-12-27_Val_meta/data/2022-03-27-mog_meta-regression data_last.csv")
+
+mogreg <- mogreg %>%
+        dplyr::left_join(mogmeta, by = c("STUDY", "n"))
+
+mogreg$weights <- 1/sqrt(mogreg$vi)
+
+plot_metareg <- function(data = mogreg, variable = NULL){
+        mogreg2 <- mogreg[!is.na(mogreg[[paste0(variable)]]),]
+        
+        reg <- rma(yi = yi,
+                   vi = vi,
+                   mods = mogreg2[[paste0(variable)]],
+                   data = mogreg2)
+        
+        # Specify basic plot, mapping sex to the x-axis, effect size 'd' to the y-axis,
+        # and 'weights' to the weight parameter.
+        preds <- predict.rma(reg)
+        plotdb <- cbind(mogreg2, preds)
+        ggplot(plotdb, aes(x = plotdb[[paste0(variable)]], y = plotdb[["yi"]], label=plotdb[["STUDY"]])) +
+                geom_ribbon(aes(ymin = ci.lb, ymax = ci.ub), alpha=0.05)+
+                geom_line(data = plotdb,aes(x = plotdb[[paste0(variable)]],y = plotdb$pred, size = 0.5), linetype="dashed", alpha=0.1)+
+        geom_text_repel(min.segment.length = 0, seed = 42, box.padding = 0.5, size=3, force=1)+
+                geom_point(aes(size=weights),shape = 21, alpha=1, fill="white") +
+                theme(legend.position = "none")+
+                xlab(variable)+
+                ylab("MD")
+}
+#Get modifiers
+plotparam<- c("mean_time_to_RTX_months",
+              "mean_onset_age", 
+              "mean_fup_months",
+              "mean_baseline_ARR",
+              "mean_baseline_EDSS",
+              "prop_relapsing",
+              "prop_children",
+              "prop_female")
+
+#filter modifiers for highly correlated
+mogreg[,unlist(plotparam)] %>%
+        chart.Correlation()
+
+##remove prop_children as correlated with mean age onset
+## remove mean EDSS as correlated highly with age of onset
+plotparam <-plotparam[!plotparam %in% c("mean_baseline_EDSS", "prop_children")]
+
+
+reg_plotlist <- lapply(c(plotparam,"n"), function(x){
+ p <- plot_metareg(data=mogreg, variable = x)
+ return(p)
+})
+```
+
+
+```{r,fig.height=8, fig.width=12, warning=FALSE, message=FALSE}
+##plot bubble plots
+patchwork::wrap_plots(reg_plotlist)
+```
+
+```{r, warning=FALSE, message=FALSE}
+##get univariate model metrics
+get_unimodels <- function(data, mod){
+        m_reg <- rma.uni(yi = yi,
+                         vi = vi,
+                         mods = data[[paste0(mod)]],
+                         data = data)
+        
+        metrics <- c(mod = mod, tau2 = round(m_reg$tau2,3),
+                     tau =round(sqrt(m_reg$tau2), 3),
+                     I2 = round(m_reg$I2, 3),
+                     R2 = round(m_reg$R2, 3),
+                     beta = round(m_reg$beta["mods",],3),
+                     zval = round(m_reg$zval[2],3),
+                     pval = round(m_reg$pval[2],7),
+                     ci.lb = round(m_reg$ci.lb[2],3),
+                     ci.ub = round(m_reg$ci.ub[2],3))
+}
+
+
+modregs <- lapply(c(plotparam,"n"), function(x){
+        get_unimodels(mogreg, x)
+})
+modregs <- arrange(as.data.frame(do.call(rbind, modregs)), desc(as.numeric(R2)))
+
+kableExtra::kable(modregs)%>% kableExtra::kable_material(c("striped", "hover"))
+
+```
+
+## Multi-model inference
+Here,  all possible predictor combinations with multi-model inference, we see that mean ARR is the most important predictor of RTX response. 
+```{r, warning=FALSE, message=FALSE}
+multimodel.inference(TE = "yi", 
+                     seTE = "sei",
+                     data = mogreg,
+                     predictors = c(plotparam),
+                     interaction = TRUE)
+```
+
+
+## Subgroup extraction and analysis
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+relapsing_mog <- read.csv(paste0(curdir, "data/2022-03-27-MOG_ARR_RELAPSING.csv"))
+adult_mog <- read.csv(paste0(curdir,"data/2022-03-27-MOG_ARR_ADULTS.csv"))
+children_mog <- read.csv(paste0(curdir,"data/2022-03-27-MOG_ARR_CHIL.csv"))
+fu12_mog <- read.csv(paste0(curdir,"data/2022-03-27-MOG_ARR_FU12M.csv"))
+firstline_mog <- read.csv(paste0(curdir,"data/2022-03-27-MOG_ARR_FIRST.csv"))
+
+subgroups <- list(relapsing_mog,adult_mog, children_mog, fu12_mog, firstline_mog)
+names(subgroups) <- c("relapsing_mog","adult_mog", "children_mog", "fu12_mog", "firstline_mog")
+
+subgroups <- lapply(subgroups, function(x){
+  y <- escalc(measure="MD", m1i=x[["mean_ARR_postRTX"]], m2i=x[["mean_ARR_preRTX"]], 
+       sd1i=x[["SD.2"]], sd2i=x[["SD.1"]], n1i=x[["n"]], n2i=x[["n"]], data=x)
+y$sei<-sqrt(y$vi)
+return(y)
+})
+
+subgroupsmetagen <- lapply(names(subgroups), function(x){
+  metagen(TE = yi,
+        seTE = sei,
+        studlab = STUDY,
+        data = subgroups[[paste0(x)]],
+        sm = "MD",
+        fixed = FALSE,
+        random = TRUE,
+        method.tau = "REML",
+        hakn = FALSE,
+        title = paste0(x))
+})
+
+names(subgroupsmetagen)<- c("relapsing_mog","adult_mog", "children_mog", "fu12_mog", "first_mog")
+print(subgroupsmetagen)
+```
+
+## Forest plots of subgroups
+
+### 
+```{r,fig.height=9, fig.width=10}
+
+
+for (i in 1:length(subgroupsmetagen)){
+  forest.meta(subgroupsmetagen[[paste0(names(subgroupsmetagen[i]))]], 
+            sortvar = yi,
+            predict = TRUE, 
+            print.tau2 = FALSE,
+            leftlabs = c("Study", "g", "SE"))
+  grid::grid.text(paste0(names(subgroupsmetagen[i])), .5, .9, gp=grid::gpar(cex=2))
+}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
